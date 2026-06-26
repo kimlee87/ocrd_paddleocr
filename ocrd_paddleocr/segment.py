@@ -1,7 +1,7 @@
-from ocrd import Processor
+from ocrd import Processor, OcrdPageResultImage
 from ocrd.decorators import ocrd_cli_options, ocrd_cli_wrap_processor
 from ocrd.processor.ocrd_page_result import OcrdPageResult
-from ocrd_models.ocrd_page import CoordsType, OcrdPage, TextRegionType, ImageRegionType
+from ocrd_models.ocrd_page import CoordsType, OcrdPage, TextRegionType, ImageRegionType, AlternativeImageType
 from ocrd_utils import points_from_bbox
 from paddleocr import LayoutDetection
 from typing import Optional
@@ -9,6 +9,10 @@ from typing import Optional
 import click
 import numpy as np
 import pathlib
+
+from ocrd_paddleocr.pagexml import ocrd_regions_to_polygons
+from ocrd_paddleocr.utils import overlay_outline
+from PIL import Image
 
 # Examples for segment models:
 #
@@ -34,6 +38,21 @@ paddleocr_label_to_pagexml_type = {
     "seal": (ImageRegionType, "ImageRegion", None),
     "footer": (TextRegionType, "TextRegion", None),
     "formula": (TextRegionType, "TextRegion", None),
+}
+
+paddleocr_eynollah_mapping = {
+    "image": "image",
+    "text": "text",
+    "paragraph_title": "text",
+    "header": "heading",
+    "table": "text",
+    "number": "text",
+    "doc_title": "text",
+    "figure_title": "text",
+    "aside_text": "text",
+    "seal": "image",
+    "footer": "text",
+    "formula": "text",
 }
 
 
@@ -96,6 +115,25 @@ class PaddleOCRProcessor(Processor):
 
             # Add the region to the PAGE XML structure
             getattr(page, f"add_{class_name}")(region)  # e.g. page.add_TextRegion()
+
+        # fetch the xml to draw overlayed image for visualization
+        page_polys = {}
+        for key, info in paddleocr_label_to_pagexml_type.items():
+            label = paddleocr_eynollah_mapping[key]
+            class_type, class_name, subtype = info
+            regions = getattr(page, f"get_{class_name}")()
+            polygons = ocrd_regions_to_polygons(regions, page_image, page_coords)
+            page_polys[label] = polygons
+
+        # draw the overlayed image
+        overlayed_image = overlay_outline(Image.fromarray(np.array(page_image)), page_polys)
+        paddle_alt_ing = AlternativeImageType(
+            comments="Overlayed image with detected regions from PaddleOCR",
+        )
+        page.add_AlternativeImage(paddle_alt_ing)
+        result.images.append(
+            OcrdPageResultImage(overlayed_image, "paddleocr_overlayed", alternative_image=paddle_alt_ing)
+        )
 
         return result
 
