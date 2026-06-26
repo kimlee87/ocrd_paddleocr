@@ -40,15 +40,15 @@ paddleocr_label_to_pagexml_type = {
     "formula": (TextRegionType, "TextRegion", None),
 }
 
-paddleocr_eynollah_mapping = {
+paddleocr_eynollah_mapping = { # treat heading as text to align with eynollah's output
     "image": "image",
     "text": "text",
-    "paragraph_title": "heading",
-    "header": "heading",
+    "paragraph_title": "text",
+    "header": "text",
     "table": "text",
     "number": "text",
-    "doc_title": "heading",
-    "figure_title": "heading",
+    "doc_title": "text",
+    "figure_title": "text",
     "aside_text": "text",
     "seal": "image",
     "footer": "text",
@@ -119,11 +119,13 @@ class PaddleOCRProcessor(Processor):
         # fetch the xml to draw overlayed image for visualization
         page_polys = {}
         for key, info in paddleocr_label_to_pagexml_type.items():
-            label = paddleocr_eynollah_mapping[key]
+            plabel = paddleocr_eynollah_mapping[key]
             class_type, class_name, subtype = info
             regions = getattr(page, f"get_{class_name}")()
+            if subtype:
+                regions = [r for r in regions if r.get_type() == subtype]
             polygons = ocrd_regions_to_polygons(regions, page_image, page_coords)
-            page_polys[label] = polygons
+            page_polys[plabel] = polygons
 
         # draw the overlayed image
         overlayed_image = overlay_outline(Image.fromarray(np.array(page_image)), page_polys)
